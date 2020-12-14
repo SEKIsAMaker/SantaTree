@@ -1,3 +1,6 @@
+const int p1 = 7;
+const int p2 = 8;
+
 const int button = 12;
 
 const int r = 3;
@@ -16,28 +19,42 @@ void setup() {
   //for printing on the console
   Serial.begin(9600);
 
+  // indicator leds
+  pinMode(p1, OUTPUT);
+  pinMode(p2, OUTPUT);
+
   //RGB Led
   pinMode(r, OUTPUT);
   pinMode(g, OUTPUT);
   pinMode(b, OUTPUT);
+
   //push button
   pinMode(button, INPUT);
 }
 
+void setProgIndicator(int prog_number){
+    if(prog_number == 1){
+      digitalWrite(p1, HIGH);
+      digitalWrite(p2, LOW);
+    }
+    if(prog_number == 2){
+      digitalWrite(p2, HIGH);
+      digitalWrite(p1, LOW);
+    }
+  }
+
 void prog1(){
   Serial.print("prog1\n");
+  setProgIndicator(1);
   setColor(red);
   delay(100);
 }
 
 void prog2(){
   Serial.print("prog2\n");
+  setProgIndicator(2);
   setColor(blue);
   delay(100);
-}
-
-void listen_for_button(){
-
 }
 
 void setColor(int color[]){
