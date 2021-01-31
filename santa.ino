@@ -1,13 +1,11 @@
 /*
-SantaTree, Main program.
+Author: Salwa EL KADDAOUI
 */
-
-#include<time.h>
 
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
 typedef enum{
-  GOTOLOOP, 
+  GOTOLOOP,
   STAY
   } flag;
 
@@ -20,9 +18,9 @@ typedef enum{
 uint8_t lightsmode1_indicator= 12;
 uint8_t lightsmode2_indicator= 13;
 
-//buttons pins
-int nbpushes_motorbutton = 0;
-int nbpushes_lightsbutton = 0;
+//number of pushes on each button
+unsigned long nbpushes_motorbutton = 0;
+unsigned long nbpushes_lightsbutton = 0;
 
 //stepper motor pins
 uint8_t motor_pin[4] = {2, 4, 7, 8};
@@ -46,9 +44,10 @@ uint8_t* colors[nb_colors] = {red, magenta, yellow, white, blue, green, cyan};
 
 
 void setup(){
-  
-  srand(time(NULL));
-  
+
+  Serial.begin(9600);
+  randomSeed(analogRead(A0));
+
   pinMode(lightsmode1_indicator, OUTPUT);
   pinMode(lightsmode2_indicator, OUTPUT);
   for(uint8_t i=0; i<2; i++){
@@ -61,31 +60,42 @@ void setup(){
 
   for(uint8_t i=0; i<2; i++)
     set_rgb_light( R[i], G[i], B[i], white, 255);
-    
+
 }
 
 /*-------------------------------------------------------------------*/
 /*----------------------------- MOTOR -------------------------------*/
 /*-------------------------------------------------------------------*/
 
-void motor_write(bool rotation_values[]){
+void motor_write(bool motor_coil_pulses[]){
   for(uint8_t i=0; i<4; i++)
-    digitalWrite(motor_pin[i], rotation_values[i]);
+    digitalWrite(motor_pin[i], motor_coil_pulses[i]);
 }
 
 flag one_motor_step(uint16_t motor_delay){
   /*
-  Revolution of the stepper motor
+  Performs an angle increment of the stepper motor
   */
-  bool rotation_values[8][4] = {{1, 0, 0, 0}, {1, 1, 0, 0}, {0, 1, 0, 0}, 
-                              {0, 1, 1, 0}, {0, 0, 1, 0}, {0, 0, 1, 1}, 
+
+  //a sequence of current pulses we apply to the pins
+  //of the motor in this order to rotate it one step
+  bool motor_coil_pulses[8][4] = {{1, 0, 0, 0}, {1, 1, 0, 0}, {0, 1, 0, 0},
+                              {0, 1, 1, 0}, {0, 0, 1, 0}, {0, 0, 1, 1},
                               {0, 0, 0, 1}, {1, 0, 0, 1} };
-  bool stop[4] = {0, 0, 0, 0};
+  bool motor_stop[4] = {0, 0, 0, 0};
+
+  //for each coil pulse
   for(uint8_t i=0; i<8; i++){
+
+    //check the number of pushes on motor button to know
+    //wether to stop the motor or keep rotating it
     if( nbpushes_motorbutton%2 == 0 )
-      motor_write( rotation_values[i] );
+      motor_write( motor_coil_pulses[i] );
     else
-      motor_write(stop);
+      motor_write(motor_stop);
+
+    //before applying the delay check if there's
+    //a button event that requires to go to loop
     flag listening_status = listen();
     if(listening_status == GOTOLOOP)
       return GOTOLOOP;
@@ -118,24 +128,38 @@ void lights_mode1(){
   Each set of RGB leds is set to a different color.
   Light flashes in decreasing time intervals.
   */
+
+  //set the 3mm leds to indicate which mode of light effects is being run
   digitalWrite(lightsmode1_indicator, HIGH);
   digitalWrite(lightsmode2_indicator, LOW);
 
-  uint16_t light_duration[4] = {1000, 500, 300, 100};
+  //perform RGB light animations while rotating the motor
+  //(or not, depending on the events on the motor button):
+
+  uint16_t RGBlight_pulseDuration[4] = {1000, 500, 300, 100};
+
   for(uint8_t d=0; d<4; d++){
-    /*estimate the necessary number of motor steps in order 
-      to keep the rgb color ON for light_duration[d] milliseconds
-    */
-    uint16_t nb_motor_steps = uint16_t(light_duration[d]/8); 
-    
+    //calculate the number of motor steps we need to do sequentially
+    //so as to keep the rgb color ON for RGBlight_pulseDuration[d] milliseconds
+    //(a motor step lasts 8 milliseconds)
+    uint16_t nb_motor_steps = uint16_t(RGBlight_pulseDuration[d]/8);
+
+    //for each color c
     for(uint8_t c=0; c<nb_colors; c++){
-      //set rgb leds
+
+      //set the first set of rgb leds to color c
       set_rgb_light( R[0], G[0], B[0], colors[c], 255);
+
+      //set the second set of rgb leds to a color that's complementary to color c
       set_rgb_light( R[1], G[1], B[1], colors[nb_colors - c - 1], 255);
-      
-      //while waiting, rotate motor and listen for button pushes
+
+      //rotate the motor while listening for button pushes
       for(uint16_t i=0; i<nb_motor_steps; i++){
+
         flag motor_status = one_motor_step(1);
+
+        //motor_status is a flag that indicates what to do in case a button
+        //was pushed during motor rotation
         if(motor_status == GOTOLOOP)
           return;
         }
@@ -144,13 +168,13 @@ void lights_mode1(){
       for(uint8_t k=0; k<10; k++){
         set_rgb_light( R[0], G[0], B[0], white, 255);
         set_rgb_light( R[1], G[1], B[1], white, 255);
-  
+
         for(uint16_t i=0; i<nb_motor_steps; i++){
           flag motor_status = one_motor_step(1);
           if(motor_status == GOTOLOOP)
             return;
           }
-          
+
         set_rgb_light( R[0], G[0], B[0], OFF, 255);
         set_rgb_light( R[1], G[1], B[1], OFF, 255);
 
@@ -169,21 +193,31 @@ void lights_mode2(){
 All leds have the same color, which is chosen randomly.
 Light intensity increases gradually.
 */
+  //set the 3mm leds to indicate which mode of light effects is being run
   digitalWrite(lightsmode1_indicator, LOW);
   digitalWrite(lightsmode2_indicator, HIGH);
 
   uint8_t max_light_intensity = 255;
   uint8_t min_light_intensity = 25;
-  uint16_t light_duration = 50;
-  uint16_t nb_motor_steps = uint16_t(light_duration/8);
-  
-  //randomly choose a color
+  uint16_t RGBlight_pulseDuration = 50;
+  uint16_t nb_motor_steps = uint16_t(RGBlight_pulseDuration/8);
+
+  //from the 7 colors we defined at the beginning of the program,
+  //pick one randomly
   uint8_t color_index = rand()%nb_colors;
 
+  //while gradually increasing RGB light intensity
   for(uint8_t l=min_light_intensity; l<max_light_intensity; l+=10){
+
+    //set the 2 sets of RGB leds to the picked color
     for(uint8_t j=0; j<2; j++)
       set_rgb_light( R[j], G[j], B[j], colors[color_index], l);
+
+    //keep rotating the stepper motor until RGBlight_pulseDuration is elapsed
     for(uint16_t m=0; m<nb_motor_steps; m++){
+
+      //if a button event occurs during a motor step
+      //go to loop() so that we can handle the event
       flag motor_status = one_motor_step(1);
       if(motor_status == GOTOLOOP)
         return;
@@ -196,21 +230,28 @@ Light intensity increases gradually.
 /*---------------------------- PUSH BUTTONS -------------------------*/
 /*-------------------------------------------------------------------*/
 
-int listen(){
+flag listen(){
+  /*
+  Catch button presses
+  Each button returns a specific range of values in analog input A1
+  */
   int buttonState = analogRead(A1);
   if(buttonState > 800 && buttonState < 850 ){
+
+    //this range is particular to the lights button
+    //wait until the user finishes the press
     while(buttonState > 800 && buttonState < 850 ){
       buttonState = analogRead(A1);
       }
+
+    //increment the global variable that stores the number
+    //of pushes on the lights button
     nbpushes_lightsbutton++;
-    if(nbpushes_lightsbutton%2==0){
-      lights_mode1();
-      return GOTOLOOP;
-    }
-    else{
-      lights_mode2();
-      return GOTOLOOP;
-   }
+
+    //return from all functions until you reach the loop()
+    //where we decide which light effects mode to trigger
+    //depending on the value of nbpushes_lightsbutton
+    return GOTOLOOP;
   }
   else{
     if( buttonState > 900 ){
